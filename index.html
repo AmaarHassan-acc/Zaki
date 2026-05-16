@@ -10,7 +10,6 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="application-name" content="Zaki Invoice">
   <meta name="theme-color" content="#7A1F2B">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <style>
     :root {
       --primary: #7A1F2B;
@@ -3974,6 +3973,8 @@
         pdfSaveFailed: "Could not generate PDF. Please try again.",
         pdfGeneratedEmpty: "Generated PDF appears empty. Please try again.",
         popupBlockedPdfDownloaded: "Popup blocked. PDF downloaded instead.",
+        popupBlockedAllowPopup: "Please allow popups to preview the PDF.",
+        previewPdf: "Preview PDF",
         pdfSaved: "PDF is ready.",
         preparingPdf: "Preparing PDF...",
         pdfPreviewMessage: "Your document will open here in a moment.",
@@ -4269,6 +4270,8 @@
         pdfSaveFailed: "تعذر إنشاء ملف PDF. يرجى المحاولة مرة أخرى.",
         pdfGeneratedEmpty: "ملف PDF الناتج فارغ. يرجى المحاولة مرة أخرى.",
         popupBlockedPdfDownloaded: "تم حظر النافذة المنبثقة. تم تنزيل ملف PDF بدلاً من ذلك.",
+        popupBlockedAllowPopup: "يرجى السماح بالنوافذ المنبثقة لمعاينة ملف PDF.",
+        previewPdf: "معاينة PDF",
         pdfSaved: "ملف PDF جاهز.",
         preparingPdf: "جاري تجهيز ملف PDF...",
         pdfPreviewMessage: "سيتم فتح المستند هنا خلال لحظات.",
@@ -8735,136 +8738,290 @@
       return btoa(binary);
     }
 
-    async function saveDocumentAsPdf(html, filename = "zaki-document.pdf") {
+    function saveDocumentAsPdf(html, filename = "zaki-document.pdf") {
+      openDocumentPreviewTab(html, filename);
+    }
+
+    function openDocumentPreviewTab(html, filename = "zaki-document.pdf") {
       const previewWindow = window.open("", "_blank");
 
-      try {
-        if (previewWindow) {
-          previewWindow.document.write(renderPdfPreviewLoadingHtml(filename));
-          previewWindow.document.close();
-        }
-
-        const blob = await createPdfBlobFromHtml(html, filename);
-        const url = URL.createObjectURL(blob);
-
-        if (previewWindow) {
-          previewWindow.location.href = url;
-          setTimeout(() => URL.revokeObjectURL(url), 60000);
-          return;
-        }
-
-        openPdfBlobInNewTab(blob, filename);
-      } catch (error) {
-        if (error?.name === "AbortError") return;
-        console.error("Save PDF failed", error);
-        if (previewWindow && !previewWindow.closed) {
-          previewWindow.close();
-        }
-        showAppMessage(String(error?.message || "").includes("empty") ? t("pdfGeneratedEmpty") : t("pdfSaveFailed"));
-      }
-    }
-
-    async function createPdfBlobFromHtml(html, filename = "zaki-document.pdf") {
-      if (typeof html2pdf === "undefined") {
-        throw new Error("html2pdf library is not loaded");
-      }
-
-      const wrapper = document.createElement("div");
-      wrapper.className = "pdf-render-root";
-      wrapper.innerHTML = `<style>${printWindowStyles()}</style>${html}`;
-
-      document.body.appendChild(wrapper);
-      await waitForPdfAssets(wrapper);
-      const sheet = wrapper.querySelector(".print-sheet") || wrapper;
-
-      const options = {
-        margin: 0,
-        filename,
-        image: {
-          type: "jpeg",
-          quality: 0.98
-        },
-        html2canvas: {
-          scale: 2,
-          useCORS: true,
-          allowTaint: true,
-          backgroundColor: "#ffffff",
-          scrollX: 0,
-          scrollY: 0,
-          windowWidth: sheet.scrollWidth || 794,
-          windowHeight: sheet.scrollHeight || 1123
-        },
-        jsPDF: {
-          unit: "mm",
-          format: "a4",
-          orientation: "portrait"
-        },
-        pagebreak: {
-          mode: ["css", "legacy"]
-        }
-      };
-
-      try {
-        const blob = await html2pdf()
-          .set(options)
-          .from(sheet)
-          .outputPdf("blob");
-
-        if (!blob || blob.size < 1000) {
-          throw new Error("Generated PDF appears empty");
-        }
-
-        return blob;
-      } finally {
-        wrapper.remove();
-      }
-    }
-
-    function waitForPdfAssets(root) {
-      const images = Array.from(root.querySelectorAll("img"));
-      const imagePromises = images.map(img => {
-        if (img.complete && img.naturalWidth > 0) return Promise.resolve();
-        return new Promise(resolve => {
-          img.onload = resolve;
-          img.onerror = resolve;
-          setTimeout(resolve, 1200);
-        });
-      });
-
-      const fontPromise = document.fonts?.ready ? document.fonts.ready.catch(() => undefined) : Promise.resolve();
-
-      return Promise.all([...imagePromises, fontPromise]).then(() => new Promise(resolve => {
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            setTimeout(resolve, 250);
-          });
-        });
-      }));
-    }
-
-    function openPdfBlobInNewTab(blob, filename = "zaki-document.pdf") {
-      const url = URL.createObjectURL(blob);
-      const opened = window.open(url, "_blank");
-
-      if (!opened) {
-        fallbackDownloadPdf(blob, filename);
-        showAppMessage(t("popupBlockedPdfDownloaded") || "Popup blocked. PDF downloaded instead.");
-        setTimeout(() => URL.revokeObjectURL(url), 1500);
+      if (!previewWindow) {
+        showAppMessage(t("popupBlockedAllowPopup") || "Please allow popups to preview the PDF.");
         return;
       }
 
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      const fullHtml = buildDocumentPreviewHtml(html, filename);
+      previewWindow.document.open();
+      previewWindow.document.write(fullHtml);
+      previewWindow.document.close();
     }
 
-    function fallbackDownloadPdf(blob, filename = "zaki-document.pdf") {
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1500);
+    function buildDocumentPreviewHtml(html, filename = "zaki-document.pdf") {
+      const lang = state?.lang || "en";
+      const safeTitle = escapeHtml(filename);
+      const appTitle = escapeHtml("Zaki Invoice");
+      const saveLabel = escapeHtml(t("savePdf"));
+      const shareLabel = escapeHtml(t("sharePdf") || "Share PDF");
+      const closeLabel = escapeHtml(t("close"));
+      const shareUnavailableLabel = escapeHtml(t("shareUnavailable") || "Sharing is not available on this browser.");
+
+      return `<!doctype html>
+<html lang="${lang}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${safeTitle}</title>
+  <style>
+    ${printWindowStyles()}
+    ${documentPreviewStyles()}
+  </style>
+</head>
+<body>
+  <main class="pdf-preview-page">
+    ${html}
+  </main>
+
+  <div class="pdf-preview-toolbar pdf-preview-toolbar-bottom">
+    <div class="pdf-preview-title">
+      <strong>${appTitle}</strong>
+      <span>${safeTitle}</span>
+    </div>
+    <div class="pdf-preview-actions">
+      <button class="pdf-preview-save-btn" type="button" onclick="window.print()">${saveLabel}</button>
+      <button class="pdf-preview-share-btn" type="button" aria-label="${shareLabel}" title="${shareLabel}" onclick="sharePreviewDocument()">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"></path>
+          <path d="M12 16V4"></path>
+          <path d="M8 8l4-4 4 4"></path>
+        </svg>
+      </button>
+      <button type="button" onclick="window.close()">${closeLabel}</button>
+    </div>
+  </div>
+
+  <script>
+    window.addEventListener("load", function () {
+      document.body.classList.add("ready");
+    });
+
+    async function sharePreviewDocument() {
+      const shareData = {
+        title: document.title || "Zaki Invoice",
+        text: "Zaki Invoice document"
+      };
+
+      if (navigator.share) {
+        try {
+          await navigator.share(shareData);
+        } catch (error) {
+          if (!error || error.name !== "AbortError") {
+            console.warn("Share failed", error);
+          }
+        }
+        return;
+      }
+
+      alert("${shareUnavailableLabel}");
+    }
+  <\/script>
+</body>
+</html>`;
+    }
+
+    function documentPreviewStyles() {
+      return `
+        :root {
+          --primary: #7A1F2B;
+          --primary-dark: #54131C;
+          --text: #221C1D;
+          --muted: #8B8082;
+          --bg: #F7F4F1;
+          --line: #E7DEDA;
+        }
+
+        * { box-sizing: border-box; }
+
+        html,
+        body {
+          margin: 0;
+          min-height: 100%;
+          background: #ECE7E4;
+          color: var(--text);
+          font-family: Arial, Helvetica, sans-serif;
+        }
+
+        body {
+          padding: 24px 16px 92px;
+        }
+
+        .pdf-preview-toolbar {
+          position: fixed;
+          left: 0;
+          right: 0;
+          z-index: 50;
+          min-height: 66px;
+          padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          background: rgba(255, 255, 255, 0.94);
+          border-top: 1px solid #E7DEDA;
+          box-shadow: 0 -8px 24px rgba(34, 28, 29, 0.10);
+          backdrop-filter: blur(14px);
+          -webkit-backdrop-filter: blur(14px);
+        }
+
+        .pdf-preview-toolbar-bottom {
+          bottom: 0;
+        }
+
+        .pdf-preview-title {
+          min-width: 0;
+          display: grid;
+          gap: 2px;
+          font-size: 12px;
+          color: var(--muted);
+        }
+
+        .pdf-preview-title strong {
+          color: var(--text);
+          font-size: 14px;
+        }
+
+        .pdf-preview-title span {
+          max-width: 48vw;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .pdf-preview-actions {
+          display: inline-flex;
+          gap: 8px;
+          flex: 0 0 auto;
+        }
+
+        .pdf-preview-actions button {
+          min-height: 40px;
+          padding: 9px 13px;
+          border: 0;
+          border-radius: 14px;
+          background: #fff;
+          color: var(--text);
+          font: inherit;
+          font-size: 13px;
+          font-weight: 800;
+          box-shadow: 0 8px 20px rgba(34, 28, 29, 0.08);
+          cursor: pointer;
+        }
+
+        .pdf-preview-actions button:first-child,
+        .pdf-preview-actions .pdf-preview-save-btn {
+          background: var(--primary);
+          color: #fff;
+        }
+
+        .pdf-preview-actions .pdf-preview-share-btn {
+          width: 42px;
+          min-width: 42px;
+          padding: 0;
+          display: inline-grid;
+          place-items: center;
+        }
+
+        .pdf-preview-actions .pdf-preview-share-btn svg {
+          width: 20px;
+          height: 20px;
+          stroke: currentColor;
+          stroke-width: 2.2;
+          stroke-linecap: round;
+          stroke-linejoin: round;
+          fill: none;
+        }
+
+        .pdf-preview-page {
+          width: 210mm;
+          min-height: 297mm;
+          margin: 0 auto;
+          padding: 7mm;
+          background: #fff;
+          box-shadow: 0 18px 55px rgba(34, 28, 29, 0.18);
+        }
+
+        .pdf-preview-page .print-sheet {
+          width: 196mm;
+          min-height: 283mm;
+          margin: 0 auto;
+          background: #fff;
+          box-shadow: none;
+        }
+
+        @media (max-width: 900px) {
+          body {
+            padding: 12px 8px calc(90px + env(safe-area-inset-bottom));
+          }
+
+          .pdf-preview-page {
+            width: 100%;
+            min-height: auto;
+            padding: 4mm;
+            overflow: auto;
+          }
+
+          .pdf-preview-page .print-sheet {
+            width: 196mm;
+            min-width: 196mm;
+          }
+
+          .pdf-preview-toolbar {
+            align-items: flex-start;
+          }
+
+          .pdf-preview-actions button {
+            min-height: 38px;
+            padding: 8px 10px;
+            font-size: 12px;
+          }
+        }
+
+        @page {
+          size: A4;
+          margin: 7mm;
+        }
+
+        @media print {
+          html,
+          body {
+            width: 210mm;
+            min-height: 297mm;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #fff !important;
+          }
+
+          .pdf-preview-toolbar {
+            display: none !important;
+          }
+
+          .pdf-preview-page {
+            width: auto !important;
+            min-height: auto !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #fff !important;
+            box-shadow: none !important;
+          }
+
+          .pdf-preview-page .print-sheet,
+          .print-sheet {
+            width: 196mm !important;
+            min-height: 283mm !important;
+            margin: 0 auto !important;
+            box-shadow: none !important;
+          }
+        }
+      `;
     }
 
     function safePdfFilename(value, fallback = "zaki-document") {
