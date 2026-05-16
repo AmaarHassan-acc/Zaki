@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -10,6 +10,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="application-name" content="Zaki Invoice">
   <meta name="theme-color" content="#7A1F2B">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <style>
     :root {
       --primary: #7A1F2B;
@@ -600,9 +601,31 @@
       flex: 1 1 auto;
     }
 
+    .share-icon-btn {
+      flex: 0 0 48px !important;
+      min-width: 48px;
+      padding: 0;
+      display: inline-grid;
+      place-items: center;
+      background: var(--surface);
+      color: var(--primary);
+      border: 1px solid var(--glass-border);
+      box-shadow: var(--shadow-soft);
+    }
+
+    .share-icon-btn svg {
+      width: 21px;
+      height: 21px;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      fill: none;
+    }
+
     .preview-actions {
       display: grid;
-      grid-template-columns: 0.85fr 1fr 1fr;
+      grid-template-columns: 0.85fr 1fr 48px 1fr 48px;
       gap: 6px;
     }
 
@@ -2070,6 +2093,18 @@
       background: var(--primary-soft);
     }
 
+    .invoice-row-menu button svg {
+      width: 14px;
+      height: 14px;
+      margin-inline-end: 6px;
+      vertical-align: -2px;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      fill: none;
+    }
+
     .invoice-row-menu button:disabled {
       color: var(--muted);
       cursor: not-allowed;
@@ -2721,6 +2756,50 @@
 
     .ios-install-actions button {
       min-height: 44px;
+    }
+
+    .pdf-direct-render-root {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 210mm;
+      min-height: 297mm;
+      background: #ffffff;
+      color: #221C1D;
+      z-index: -1;
+      pointer-events: none;
+      overflow: visible;
+    }
+
+    .pdf-direct-render-root .print-sheet {
+      display: flex !important;
+      width: 196mm !important;
+      min-height: 283mm !important;
+      margin: 0 auto !important;
+      background: #ffffff !important;
+      color: #221C1D !important;
+      font-family: Arial, Helvetica, sans-serif !important;
+      font-size: 9px !important;
+      line-height: 1.15 !important;
+      direction: ltr !important;
+      flex-direction: column !important;
+      transform: none !important;
+    }
+
+    .pdf-direct-render-root table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .pdf-direct-render-root th,
+    .pdf-direct-render-root td {
+      border: 1px solid #E7DEDA;
+    }
+
+    .pdf-direct-render-root * {
+      box-sizing: border-box;
+      print-color-adjust: exact;
+      -webkit-print-color-adjust: exact;
     }
 
     .pdf-render-root {
@@ -5576,6 +5655,18 @@
       saveDocumentAsPdf(html, filename);
     }
 
+    function shareCustomerStatementPdf(customerId = "", invoiceId = "") {
+      const customer = findCustomerProfileSource(customerId, invoiceId);
+      if (!customer) return;
+      const allTransactions = customerStatementTransactions(customer);
+      const fromDate = modalContext?.type === "customer-statement" ? modalContext.statementDateFrom || "" : "";
+      const toDate = modalContext?.type === "customer-statement" ? modalContext.statementDateTo || "" : "";
+      const transactions = filterStatementTransactionsByDate(allTransactions, fromDate, toDate);
+      const html = renderPrintableCustomerStatement(customer, transactions, { fromDate, toDate });
+      const filename = safePdfFilename(`${customer.name || "customer"}-statement`);
+      shareDocumentAsPdf(html, filename);
+    }
+
     function renderPdfPreviewLoadingHtml(filename = "zaki-document.pdf") {
       const isRtl = state.lang === "ar";
       return `
@@ -5814,6 +5905,16 @@
           <path d="M20 13v4a2 2 0 0 1-2 2h-1v-8h1a2 2 0 0 1 2 2z"></path>
           <path d="M12 19v2"></path>
           <path d="M9 21h6"></path>
+        </svg>
+      `;
+    }
+
+    function shareIconSvg() {
+      return `
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"></path>
+          <path d="M12 16V4"></path>
+          <path d="M8 8l4-4 4 4"></path>
         </svg>
       `;
     }
@@ -6297,6 +6398,13 @@
       const paymentData = paymentRecordPayload(invoice, paymentIndex);
       if (!invoice || !paymentData) return;
       savePaymentReceiptPdf(invoiceId, paymentData);
+    }
+
+    function sharePaymentFromPaymentsPage(invoiceId, paymentIndex) {
+      const invoice = db.invoices.find(item => item.id === invoiceId);
+      const paymentData = paymentRecordPayload(invoice, paymentIndex);
+      if (!invoice || !paymentData) return;
+      sharePaymentReceiptPdf(invoiceId, paymentData);
     }
 
     function renderPaymentsPage() {
@@ -7770,6 +7878,16 @@
       savePaymentReceiptPdf(invoice.id, paymentData);
     }
 
+    function sharePaymentRecordReceipt() {
+      if (modalContext?.type !== "payment-receipt-print") return;
+      const invoice = db.invoices.find(item => item.id === modalContext.invoiceId);
+      if (!invoice) return;
+      const paymentData = paymentRecordPayload(invoice, modalContext.paymentIndex);
+      if (!paymentData) return;
+      closeModal();
+      sharePaymentReceiptPdf(invoice.id, paymentData);
+    }
+
     function invoiceSearchText(invoice) {
       const customer = invoice.customer || {};
       return [
@@ -7913,8 +8031,8 @@
               <button onclick="editInvoice('${invoice.id}')">${t("edit")}</button>
               <button onclick="openAddPaymentModal('${invoice.id}')">${t("addPayment")}</button>
               <button onclick="saveInvoicePdf('${invoice.id}', 'simple')">${t("saveSimpleInvoicePdf")}</button>
-              <button class="primary" onclick="saveInvoicePdf('${invoice.id}', 'tax')">${t("saveTaxInvoicePdf")}</button>
-            </div>
+                <button class="primary" onclick="saveInvoicePdf('${invoice.id}', 'tax')">${t("saveTaxInvoicePdf")}</button>
+              </div>
           </div>
         </div>
       `;
@@ -8756,14 +8874,225 @@
       previewWindow.document.close();
     }
 
+    function shareDocumentAsPdf(html, filename = "zaki-document.pdf") {
+      const loadingWindow = openPdfShareLoadingWindow(filename);
+
+      createDirectSharePdfBlob(html, filename)
+        .then(blob => sharePdfFileBlob(blob, filename, loadingWindow))
+        .catch(error => {
+          console.error("Share PDF failed", error);
+          if (loadingWindow && !loadingWindow.closed) loadingWindow.close();
+          showAppMessage(t("pdfSaveFailed") || "Could not generate PDF. Please try again.");
+        });
+    }
+
+    function openPdfShareLoadingWindow(filename = "zaki-document.pdf") {
+      const win = window.open("", "_blank");
+      if (!win) {
+        showAppMessage(t("popupBlockedAllowPopup") || "Please allow popups to preview the PDF.");
+        return null;
+      }
+
+      win.document.open();
+      win.document.write(renderPdfShareLoadingHtml(filename));
+      win.document.close();
+      return win;
+    }
+
+    function renderPdfShareLoadingHtml(filename = "zaki-document.pdf") {
+      const safeTitle = escapeHtml(filename);
+      const loadingText = escapeHtml(t("preparingPdf") || "Preparing PDF...");
+      return `<!doctype html>
+<html lang="${state?.lang || "en"}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${safeTitle}</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: #F7F4F1;
+      color: #221C1D;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+    .loader {
+      width: min(86vw, 320px);
+      padding: 24px;
+      border-radius: 28px;
+      background: #fff;
+      box-shadow: 0 18px 55px rgba(34,28,29,0.16);
+      text-align: center;
+    }
+    .spinner {
+      width: 34px;
+      height: 34px;
+      margin: 0 auto 12px;
+      border: 4px solid #E7DEDA;
+      border-top-color: #7A1F2B;
+      border-radius: 50%;
+      animation: spin 0.85s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    strong { display: block; margin-bottom: 4px; font-size: 16px; }
+    span { display: block; color: #8B8082; font-size: 12px; overflow-wrap: anywhere; }
+  </style>
+</head>
+<body>
+  <div class="loader">
+    <div class="spinner"></div>
+    <strong>${loadingText}</strong>
+    <span>${safeTitle}</span>
+  </div>
+</body>
+</html>`;
+    }
+
+    async function ensureHtml2PdfLoaded() {
+      if (typeof html2pdf !== "undefined") return;
+
+      await new Promise((resolve, reject) => {
+        const existing = document.querySelector('script[data-html2pdf-loader="true"]');
+        if (existing) {
+          existing.addEventListener("load", resolve, { once: true });
+          existing.addEventListener("error", reject, { once: true });
+          return;
+        }
+
+        const script = document.createElement("script");
+        script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+        script.async = true;
+        script.dataset.html2pdfLoader = "true";
+        script.onload = resolve;
+        script.onerror = () => reject(new Error("html2pdf library could not be loaded"));
+        document.head.appendChild(script);
+      });
+
+      if (typeof html2pdf === "undefined") {
+        throw new Error("html2pdf library is not loaded");
+      }
+    }
+
+    async function createDirectSharePdfBlob(html, filename = "zaki-document.pdf") {
+      await ensureHtml2PdfLoaded();
+
+      const wrapper = document.createElement("div");
+      wrapper.className = "pdf-direct-render-root";
+      wrapper.innerHTML = `<style>${printWindowStyles()}</style>${html}`;
+      document.body.appendChild(wrapper);
+
+      try {
+        await waitForPdfRenderAssets(wrapper);
+        const sheet = wrapper.querySelector(".print-sheet") || wrapper;
+
+        const options = {
+          margin: 0,
+          filename,
+          image: { type: "jpeg", quality: 0.98 },
+          html2canvas: {
+            scale: 2,
+            useCORS: true,
+            allowTaint: true,
+            backgroundColor: "#ffffff",
+            scrollX: 0,
+            scrollY: 0,
+            windowWidth: Math.max(sheet.scrollWidth || 794, 794),
+            windowHeight: Math.max(sheet.scrollHeight || 1123, 1123)
+          },
+          jsPDF: {
+            unit: "mm",
+            format: "a4",
+            orientation: "portrait"
+          },
+          pagebreak: { mode: ["css", "legacy"] }
+        };
+
+        const blob = await html2pdf().set(options).from(sheet).outputPdf("blob");
+        if (!blob || blob.size < 1000) {
+          throw new Error("Generated PDF appears empty");
+        }
+        return blob;
+      } finally {
+        wrapper.remove();
+      }
+    }
+
+    function waitForPdfRenderAssets(root) {
+      const images = Array.from(root.querySelectorAll("img"));
+      const imagePromises = images.map(img => {
+        if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+        return new Promise(resolve => {
+          img.onload = resolve;
+          img.onerror = resolve;
+          setTimeout(resolve, 1200);
+        });
+      });
+
+      const fontPromise = document.fonts && document.fonts.ready ? document.fonts.ready.catch(() => {}) : Promise.resolve();
+
+      return Promise.all([...imagePromises, fontPromise]).then(() => new Promise(resolve => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            setTimeout(resolve, 300);
+          });
+        });
+      }));
+    }
+
+    async function sharePdfFileBlob(blob, filename = "zaki-document.pdf", loadingWindow = null) {
+      const file = new File([blob], filename, { type: "application/pdf" });
+
+      if (loadingWindow && !loadingWindow.closed) {
+        try {
+          loadingWindow.document.body.innerHTML = `
+            <div class="loader">
+              <div class="spinner"></div>
+              <strong>${escapeHtml(t("sharePdf") || "Share PDF")}</strong>
+              <span>${escapeHtml(filename)}</span>
+            </div>
+          `;
+        } catch (error) {}
+      }
+
+      try {
+        if (navigator.canShare && navigator.canShare({ files: [file] }) && navigator.share) {
+          await navigator.share({
+            title: filename,
+            text: "Zaki Invoice PDF",
+            files: [file]
+          });
+          if (loadingWindow && !loadingWindow.closed) loadingWindow.close();
+          return;
+        }
+      } catch (error) {
+        console.warn("Native file share failed", error);
+      }
+
+      const url = URL.createObjectURL(blob);
+      if (loadingWindow && !loadingWindow.closed) {
+        loadingWindow.location.href = url;
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+        return;
+      }
+
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    }
+
     function buildDocumentPreviewHtml(html, filename = "zaki-document.pdf") {
       const lang = state?.lang || "en";
       const safeTitle = escapeHtml(filename);
       const appTitle = escapeHtml("Zaki Invoice");
-      const saveLabel = escapeHtml(t("savePdf"));
-      const shareLabel = escapeHtml(t("sharePdf") || "Share PDF");
-      const closeLabel = escapeHtml(t("close"));
-      const shareUnavailableLabel = escapeHtml(t("shareUnavailable") || "Sharing is not available on this browser.");
+      const saveLabel = escapeHtml(t("savePdf") || "Save PDF");
+      const closeLabel = escapeHtml(t("close") || "Close");
+      const preparingLabel = escapeHtml(t("preparingPdf") || "Preparing PDF...");
 
       return `<!doctype html>
 <html lang="${lang}">
@@ -8778,7 +9107,11 @@
 </head>
 <body>
   <main class="pdf-preview-page">
-    ${html}
+    <div class="pdf-preview-sheet-wrap">
+      <div class="pdf-preview-sheet-scale">
+        ${html}
+      </div>
+    </div>
   </main>
 
   <div class="pdf-preview-toolbar pdf-preview-toolbar-bottom">
@@ -8787,42 +9120,99 @@
       <span>${safeTitle}</span>
     </div>
     <div class="pdf-preview-actions">
-      <button class="pdf-preview-save-btn" type="button" onclick="window.print()">${saveLabel}</button>
-      <button class="pdf-preview-share-btn" type="button" aria-label="${shareLabel}" title="${shareLabel}" onclick="sharePreviewDocument()">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"></path>
-          <path d="M12 16V4"></path>
-          <path d="M8 8l4-4 4 4"></path>
-        </svg>
-      </button>
+      <button class="pdf-preview-save-btn" type="button" onclick="savePreviewPdf(this)">${saveLabel}</button>
       <button type="button" onclick="window.close()">${closeLabel}</button>
     </div>
   </div>
 
   <script>
-    window.addEventListener("load", function () {
-      document.body.classList.add("ready");
-    });
+    function measureCssMillimeters(widthMm, heightMm) {
+      var box = document.createElement("div");
+      box.style.position = "fixed";
+      box.style.left = "0";
+      box.style.top = "0";
+      box.style.width = widthMm + "mm";
+      box.style.height = heightMm + "mm";
+      box.style.pointerEvents = "none";
+      box.style.opacity = "0.01";
+      document.body.appendChild(box);
+      var rect = box.getBoundingClientRect();
+      box.remove();
+      return { width: rect.width || 740, height: rect.height || 1070 };
+    }
 
-    async function sharePreviewDocument() {
-      const shareData = {
-        title: document.title || "Zaki Invoice",
-        text: "Zaki Invoice document"
-      };
+    function setupPreviewScale() {
+      var sheet = document.querySelector(".print-sheet");
+      var wrap = document.querySelector(".pdf-preview-sheet-wrap");
+      if (!sheet || !wrap) return;
 
-      if (navigator.share) {
-        try {
-          await navigator.share(shareData);
-        } catch (error) {
-          if (!error || error.name !== "AbortError") {
-            console.warn("Share failed", error);
-          }
-        }
-        return;
+      var availableWidth = Math.max(280, window.innerWidth - 20);
+      var pageMeasure = measureCssMillimeters(210, 297);
+      var scale = Math.min(1, availableWidth / pageMeasure.width);
+
+      document.documentElement.style.setProperty("--preview-scale", String(scale));
+      wrap.style.width = Math.ceil(pageMeasure.width * scale) + "px";
+      wrap.style.height = Math.ceil(pageMeasure.height * scale) + "px";
+    }
+
+    function prepareOnePagePrintScale() {
+      var sheet = document.querySelector(".print-sheet");
+      if (!sheet) return 1;
+
+      var target = measureCssMillimeters(196, 283);
+      var contentWidth = Math.max(sheet.scrollWidth || 1, sheet.getBoundingClientRect().width || 1);
+      var contentHeight = Math.max(sheet.scrollHeight || 1, sheet.getBoundingClientRect().height || 1);
+      var scale = Math.min(1, target.width / contentWidth, target.height / contentHeight);
+
+      // Keep all content on one A4 page. Very long statements may become small, but will not split.
+      scale = Math.max(0.38, Math.min(1, scale - 0.01));
+      document.documentElement.style.setProperty("--print-scale", String(scale));
+      return scale;
+    }
+
+    function savePreviewPdf(button) {
+      var original = button ? button.textContent : "";
+      if (button) {
+        button.disabled = true;
+        button.textContent = "${preparingLabel}";
       }
 
-      alert("${shareUnavailableLabel}");
+      prepareOnePagePrintScale();
+      setTimeout(function () {
+        window.print();
+        setTimeout(function () {
+          if (button) {
+            button.disabled = false;
+            button.textContent = original;
+          }
+        }, 700);
+      }, 120);
     }
+
+    window.addEventListener("load", function () {
+      document.body.classList.add("ready");
+      setupPreviewScale();
+      prepareOnePagePrintScale();
+      setTimeout(function () {
+        setupPreviewScale();
+        prepareOnePagePrintScale();
+      }, 250);
+    });
+
+    window.addEventListener("resize", function () {
+      setupPreviewScale();
+      prepareOnePagePrintScale();
+    });
+
+    window.addEventListener("beforeprint", function () {
+      document.documentElement.style.setProperty("--preview-scale", "1");
+      prepareOnePagePrintScale();
+    });
+
+    window.addEventListener("afterprint", function () {
+      setupPreviewScale();
+      prepareOnePagePrintScale();
+    });
   <\/script>
 </body>
 </html>`;
@@ -8837,6 +9227,8 @@
           --muted: #8B8082;
           --bg: #F7F4F1;
           --line: #E7DEDA;
+          --preview-scale: 1;
+          --print-scale: 1;
         }
 
         * { box-sizing: border-box; }
@@ -8851,7 +9243,7 @@
         }
 
         body {
-          padding: 24px 16px 92px;
+          padding: 24px 16px calc(92px + env(safe-area-inset-bottom));
         }
 
         .pdf-preview-toolbar {
@@ -8872,9 +9264,7 @@
           -webkit-backdrop-filter: blur(14px);
         }
 
-        .pdf-preview-toolbar-bottom {
-          bottom: 0;
-        }
+        .pdf-preview-toolbar-bottom { bottom: 0; }
 
         .pdf-preview-title {
           min-width: 0;
@@ -8916,37 +9306,45 @@
           cursor: pointer;
         }
 
-        .pdf-preview-actions button:first-child,
         .pdf-preview-actions .pdf-preview-save-btn {
           background: var(--primary);
           color: #fff;
         }
 
-        .pdf-preview-actions .pdf-preview-share-btn {
-          width: 42px;
-          min-width: 42px;
-          padding: 0;
-          display: inline-grid;
-          place-items: center;
-        }
-
-        .pdf-preview-actions .pdf-preview-share-btn svg {
-          width: 20px;
-          height: 20px;
-          stroke: currentColor;
-          stroke-width: 2.2;
-          stroke-linecap: round;
-          stroke-linejoin: round;
-          fill: none;
+        .pdf-preview-actions button:disabled {
+          opacity: 0.65;
+          cursor: wait;
         }
 
         .pdf-preview-page {
-          width: 210mm;
-          min-height: 297mm;
+          width: 100%;
+          min-height: calc(100vh - 116px);
           margin: 0 auto;
-          padding: 7mm;
+          padding: 0;
+          display: flex;
+          justify-content: center;
+          align-items: flex-start;
+          background: transparent;
+          overflow: visible;
+        }
+
+        .pdf-preview-sheet-wrap {
+          position: relative;
+          width: 210mm;
+          height: 297mm;
+          margin: 0 auto;
           background: #fff;
           box-shadow: 0 18px 55px rgba(34, 28, 29, 0.18);
+          overflow: hidden;
+        }
+
+        .pdf-preview-sheet-scale {
+          width: 210mm;
+          min-height: 297mm;
+          padding: 7mm;
+          background: #fff;
+          transform: scale(var(--preview-scale));
+          transform-origin: top left;
         }
 
         .pdf-preview-page .print-sheet {
@@ -8955,23 +9353,27 @@
           margin: 0 auto;
           background: #fff;
           box-shadow: none;
+          break-after: avoid;
+          page-break-after: avoid;
         }
 
         @media (max-width: 900px) {
+          html,
+          body { overflow-x: hidden; }
+
           body {
-            padding: 12px 8px calc(90px + env(safe-area-inset-bottom));
+            padding: 10px 6px calc(90px + env(safe-area-inset-bottom));
           }
 
           .pdf-preview-page {
             width: 100%;
             min-height: auto;
-            padding: 4mm;
-            overflow: auto;
+            overflow: visible;
           }
 
-          .pdf-preview-page .print-sheet {
-            width: 196mm;
-            min-width: 196mm;
+          .pdf-preview-sheet-wrap {
+            margin: 0 auto;
+            border-radius: 2px;
           }
 
           .pdf-preview-toolbar {
@@ -8987,17 +9389,24 @@
 
         @page {
           size: A4;
-          margin: 7mm;
+          margin: 0;
         }
 
         @media print {
           html,
           body {
-            width: 210mm;
-            min-height: 297mm;
+            width: 210mm !important;
+            height: 297mm !important;
+            min-height: 297mm !important;
             margin: 0 !important;
             padding: 0 !important;
             background: #fff !important;
+            overflow: hidden !important;
+          }
+
+          body * {
+            print-color-adjust: exact;
+            -webkit-print-color-adjust: exact;
           }
 
           .pdf-preview-toolbar {
@@ -9005,20 +9414,58 @@
           }
 
           .pdf-preview-page {
-            width: auto !important;
-            min-height: auto !important;
+            display: block !important;
+            width: 210mm !important;
+            height: 297mm !important;
+            min-height: 297mm !important;
             margin: 0 !important;
             padding: 0 !important;
             background: #fff !important;
             box-shadow: none !important;
+            overflow: hidden !important;
+          }
+
+          .pdf-preview-sheet-wrap {
+            width: 210mm !important;
+            height: 297mm !important;
+            min-height: 297mm !important;
+            margin: 0 !important;
+            background: #fff !important;
+            box-shadow: none !important;
+            overflow: hidden !important;
+          }
+
+          .pdf-preview-sheet-scale {
+            width: 210mm !important;
+            min-height: 297mm !important;
+            height: auto !important;
+            padding: 7mm !important;
+            background: #fff !important;
+            transform: scale(var(--print-scale)) !important;
+            transform-origin: top left !important;
           }
 
           .pdf-preview-page .print-sheet,
           .print-sheet {
             width: 196mm !important;
-            min-height: 283mm !important;
+            min-height: 0 !important;
+            height: auto !important;
+            max-height: none !important;
             margin: 0 auto !important;
             box-shadow: none !important;
+            overflow: visible !important;
+            break-after: avoid !important;
+            page-break-after: avoid !important;
+          }
+
+          .print-main,
+          .print-footer-area {
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
+          }
+
+          .print-footer-area {
+            margin-top: 3mm !important;
           }
         }
       `;
@@ -9045,6 +9492,14 @@
       saveDocumentAsPdf(html, filename);
     }
 
+    function shareInvoicePdf(id, type = "tax") {
+      const invoice = db.invoices.find(item => item.id === id);
+      if (!invoice) return;
+      const html = renderPrintableInvoice(invoice, type);
+      const filename = invoicePdfFilename(invoice, type);
+      shareDocumentAsPdf(html, filename);
+    }
+
     function downloadInvoicePdf(id, type) {
       saveInvoicePdf(id, type);
     }
@@ -9056,6 +9511,15 @@
       const html = renderPaymentReceipt(invoice, data);
       const filename = safePdfFilename(data?.receiptNo || `${invoice.number || "invoice"}-payment-receipt`);
       saveDocumentAsPdf(html, filename);
+    }
+
+    function sharePaymentReceiptPdf(invoiceId, paymentData = null) {
+      const invoice = db.invoices.find(item => item.id === invoiceId);
+      if (!invoice) return;
+      const data = normalizePaymentReceiptData(invoice, paymentData);
+      const html = renderPaymentReceipt(invoice, data);
+      const filename = safePdfFilename(data?.receiptNo || `${invoice.number || "invoice"}-payment-receipt`);
+      shareDocumentAsPdf(html, filename);
     }
 
     function printWindowStyles() {
@@ -10434,5 +10898,4 @@
   </script>
 </body>
 </html>
-
 
