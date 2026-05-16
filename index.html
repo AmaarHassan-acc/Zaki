@@ -10,6 +10,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="application-name" content="Zaki Invoice">
   <meta name="theme-color" content="#7A1F2B">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <style>
     :root {
       --primary: #7A1F2B;
@@ -2041,6 +2042,8 @@
       z-index: 35;
       width: 142px;
       max-width: calc(100vw - 20px);
+      max-height: calc(100dvh - 20px);
+      overflow: auto;
       border: 0;
       border-radius: 18px;
       background: var(--surface);
@@ -3922,6 +3925,17 @@
         invoiceFullyPaid: "Invoice is fully paid.",
         printReceipt: "Print",
         viewInvoice: "View",
+        savePdf: "Save PDF",
+        sharePdf: "Share PDF",
+        print: "Print",
+        pdfSaveFailed: "Could not generate PDF. Opening print instead.",
+        pdfSaved: "PDF is ready.",
+        saveTaxInvoicePdf: "Save Tax Invoice PDF",
+        saveSimpleInvoicePdf: "Save Simple Invoice PDF",
+        printTaxInvoice: "Print Tax Invoice",
+        printSimpleInvoiceOnly: "Print Simple Invoice",
+        saveReceiptPdf: "Save Receipt PDF",
+        printReceiptPdf: "Print Receipt",
         noPayments: "No payment history.",
         receiptNo: "Receipt No.",
         printReceiptQuestion: "Print this payment receipt?",
@@ -4204,6 +4218,17 @@
         invoiceFullyPaid: "الفاتورة مدفوعة بالكامل.",
         printReceipt: "طباعة",
         viewInvoice: "عرض",
+        savePdf: "حفظ PDF",
+        sharePdf: "مشاركة PDF",
+        print: "طباعة",
+        pdfSaveFailed: "تعذر إنشاء ملف PDF. سيتم فتح الطباعة بدلاً من ذلك.",
+        pdfSaved: "ملف PDF جاهز.",
+        saveTaxInvoicePdf: "حفظ PDF للفاتورة الضريبية",
+        saveSimpleInvoicePdf: "حفظ PDF للفاتورة المبسطة",
+        printTaxInvoice: "طباعة الفاتورة الضريبية",
+        printSimpleInvoiceOnly: "طباعة الفاتورة المبسطة",
+        saveReceiptPdf: "حفظ PDF للسند",
+        printReceiptPdf: "طباعة السند",
         noPayments: "\u0644\u0627 \u064a\u0648\u062c\u062f \u0633\u062c\u0644 \u062f\u0641\u0639.",
         receiptNo: "\u0631\u0642\u0645 \u0627\u0644\u0633\u0646\u062f",
         printReceiptQuestion: "\u0637\u0628\u0627\u0639\u0629 \u0633\u0646\u062f \u0647\u0630\u0647 \u0627\u0644\u062f\u0641\u0639\u0629\u061f",
@@ -5483,7 +5508,8 @@
             </div>
             <div class="actions">
               <button type="button" onclick="closeModal()">${t("close")}</button>
-              <button class="primary" type="button" onclick="printCustomerStatement('${escapeJsString(customerId)}', '${escapeJsString(invoiceId)}')">${t("printStatement")}</button>
+              <button type="button" onclick="printCustomerStatement('${escapeJsString(customerId)}', '${escapeJsString(invoiceId)}')">${t("print")}</button>
+              <button class="primary" type="button" onclick="saveCustomerStatementPdf('${escapeJsString(customerId)}', '${escapeJsString(invoiceId)}')">${t("savePdf")}</button>
             </div>
           </div>
         </div>
@@ -5499,7 +5525,19 @@
       const transactions = filterStatementTransactionsByDate(allTransactions, fromDate, toDate);
       const html = renderPrintableCustomerStatement(customer, transactions, { fromDate, toDate });
       document.getElementById("printArea").innerHTML = html;
-      openInvoicePrintFrame(html, (customer.name || "customer") + "-statement");
+      openInvoicePrintFrame(html, safePdfFilename(`${customer.name || "customer"}-statement`));
+    }
+
+    function saveCustomerStatementPdf(customerId = "", invoiceId = "") {
+      const customer = findCustomerProfileSource(customerId, invoiceId);
+      if (!customer) return;
+      const allTransactions = customerStatementTransactions(customer);
+      const fromDate = modalContext?.type === "customer-statement" ? modalContext.statementDateFrom || "" : "";
+      const toDate = modalContext?.type === "customer-statement" ? modalContext.statementDateTo || "" : "";
+      const transactions = filterStatementTransactionsByDate(allTransactions, fromDate, toDate);
+      const html = renderPrintableCustomerStatement(customer, transactions, { fromDate, toDate });
+      const filename = safePdfFilename(`${customer.name || "customer"}-statement`);
+      saveDocumentAsPdf(html, filename);
     }
 
     function customerNameButton(customer, fallback = "", extraClass = "", invoiceId = "") {
@@ -6140,6 +6178,13 @@
       printPaymentReceipt(invoiceId, paymentData);
     }
 
+    function savePaymentFromPaymentsPage(invoiceId, paymentIndex) {
+      const invoice = db.invoices.find(item => item.id === invoiceId);
+      const paymentData = paymentRecordPayload(invoice, paymentIndex);
+      if (!invoice || !paymentData) return;
+      savePaymentReceiptPdf(invoiceId, paymentData);
+    }
+
     function renderPaymentsPage() {
       const payments = collectAllPayments();
       return `
@@ -6194,7 +6239,7 @@
       const viewportWidth = window.innerWidth || 360;
       const viewportHeight = window.innerHeight || 640;
       const left = rect ? Math.min(viewportWidth - width - 10, Math.max(10, rect.right - width)) : 10;
-      const top = rect ? Math.min(viewportHeight - 116, Math.max(10, rect.bottom + 6)) : 80;
+      const top = rect ? Math.max(10, Math.min(viewportHeight - 150, Math.max(10, rect.bottom + 6))) : 80;
       state.paymentActionMenu = { invoiceId, paymentIndex, left, top };
       state.invoiceActionMenu = null;
       state.customerActionMenu = null;
@@ -6214,7 +6259,8 @@
       return `
         <div class="invoice-menu-scrim" onclick="closePaymentActionMenu()"></div>
         <div class="invoice-row-menu" style="left:${menu.left}px; top:${menu.top}px">
-          <button type="button" onclick="runPaymentMenuAction('${escapeJsString(menu.invoiceId)}', ${menu.paymentIndex}, 'print')">${t("printReceipt")}</button>
+          <button type="button" onclick="runPaymentMenuAction('${escapeJsString(menu.invoiceId)}', ${menu.paymentIndex}, 'save')">${t("saveReceiptPdf")}</button>
+          <button type="button" onclick="runPaymentMenuAction('${escapeJsString(menu.invoiceId)}', ${menu.paymentIndex}, 'print')">${t("printReceiptPdf")}</button>
           <button type="button" onclick="runPaymentMenuAction('${escapeJsString(menu.invoiceId)}', ${menu.paymentIndex}, 'view')">${t("viewInvoice")}</button>
           <button type="button" ${canAddPayment ? "" : "disabled"} onclick="runPaymentMenuAction('${escapeJsString(menu.invoiceId)}', ${menu.paymentIndex}, 'payment')">${t("addPayment")}</button>
         </div>
@@ -6223,6 +6269,10 @@
 
     function runPaymentMenuAction(invoiceId, paymentIndex, action) {
       state.paymentActionMenu = null;
+      if (action === "save") {
+        render();
+        savePaymentFromPaymentsPage(invoiceId, paymentIndex);
+      }
       if (action === "print") {
         render();
         printPaymentFromPaymentsPage(invoiceId, paymentIndex);
@@ -6731,7 +6781,8 @@
             </label>
             <div class="customer-modal-actions payment-actions">
               <button type="button" onclick="closeModal()">${t("cancel")}</button>
-              <button type="button" onclick="printPaymentReceiptFromModal(this)">${t("printPaymentReceipt")}</button>
+              <button class="primary" type="button" onclick="savePaymentReceiptFromModal(this)">${t("saveReceiptPdf")}</button>
+              <button type="button" onclick="printPaymentReceiptFromModal(this)">${t("printReceiptPdf")}</button>
               <button class="primary wide" type="submit">${t("savePayment")}</button>
             </div>
           </form>
@@ -6814,6 +6865,15 @@
       if (!form || !invoice) return;
       const paymentData = paymentPayloadFromAddPaymentForm(form, invoice);
       printPaymentReceipt(invoice.id, paymentData);
+    }
+
+    function savePaymentReceiptFromModal(button) {
+      if (modalContext?.type !== "invoice-payment") return;
+      const form = button.closest("form");
+      const invoice = db.invoices.find(item => item.id === modalContext.id);
+      if (!form || !invoice) return;
+      const paymentData = paymentPayloadFromAddPaymentForm(form, invoice);
+      savePaymentReceiptPdf(invoice.id, paymentData);
     }
 
     function renderItemsStep() {
@@ -7286,8 +7346,10 @@
           ${renderInvoicePreview(invoice, true)}
           <div class="actions preview-actions">
             <button onclick="state.step=3; render()">${t("editItems")}</button>
-            <button onclick="downloadInvoicePdf('${invoice.id}', 'simple')">${t("printSimpleInvoice")}</button>
-            <button class="primary" onclick="downloadInvoicePdf('${invoice.id}', 'tax')">${t("printB2bTaxInvoice")}</button>
+            <button onclick="saveInvoicePdf('${invoice.id}', 'simple')">${t("saveSimpleInvoicePdf")}</button>
+            <button onclick="printInvoice('${invoice.id}', 'simple')">${t("print")}</button>
+            <button class="primary" onclick="saveInvoicePdf('${invoice.id}', 'tax')">${t("saveTaxInvoicePdf")}</button>
+            <button onclick="printInvoice('${invoice.id}', 'tax')">${t("print")}</button>
           </div>
         </div>
       `;
@@ -7598,16 +7660,17 @@
         <div class="modal-backdrop profile-backdrop" onclick="closeModal()">
           <div class="modal stack" role="dialog" aria-modal="true" onclick="event.stopPropagation()">
             <div class="section-head">
-              <h2>${t("printPaymentReceipt")}</h2>
+              <h2>${t("paymentReceipt")}</h2>
               <button type="button" onclick="closeModal()">${t("close")}</button>
             </div>
             <div class="list-card">
-              <div class="name">${t("printReceiptQuestion")}</div>
+              <div class="name">${t("paymentReceipt")}</div>
               <div class="small muted">${escapeHtml(paymentData.receiptNo)} | ${money(paymentData.paymentAmount)}</div>
             </div>
             <div class="actions">
               <button type="button" onclick="closeModal()">${t("cancel")}</button>
-              <button class="primary" type="button" onclick="printPaymentRecordReceipt()">${t("printPaymentReceipt")}</button>
+              <button type="button" onclick="printPaymentRecordReceipt()">${t("printReceiptPdf")}</button>
+              <button class="primary" type="button" onclick="savePaymentRecordReceipt()">${t("saveReceiptPdf")}</button>
             </div>
           </div>
         </div>
@@ -7622,6 +7685,16 @@
       if (!paymentData) return;
       closeModal();
       printPaymentReceipt(invoice.id, paymentData);
+    }
+
+    function savePaymentRecordReceipt() {
+      if (modalContext?.type !== "payment-receipt-print") return;
+      const invoice = db.invoices.find(item => item.id === modalContext.invoiceId);
+      if (!invoice) return;
+      const paymentData = paymentRecordPayload(invoice, modalContext.paymentIndex);
+      if (!paymentData) return;
+      closeModal();
+      savePaymentReceiptPdf(invoice.id, paymentData);
     }
 
     function invoiceSearchText(invoice) {
@@ -7700,7 +7773,7 @@
       const viewportWidth = window.innerWidth || 360;
       const viewportHeight = window.innerHeight || 640;
       const left = rect ? Math.min(viewportWidth - width - 10, Math.max(10, rect.right - width)) : 10;
-      const top = rect ? Math.min(viewportHeight - 172, Math.max(10, rect.bottom + 6)) : 80;
+      const top = rect ? Math.max(10, Math.min(viewportHeight - 284, Math.max(10, rect.bottom + 6))) : 80;
       state.invoiceActionMenu = { id, left, top };
       state.customerActionMenu = null;
       state.paymentActionMenu = null;
@@ -7721,8 +7794,10 @@
           <button type="button" onclick="runInvoiceMenuAction('${menu.id}', 'view')">${t("view")}</button>
           <button type="button" onclick="runInvoiceMenuAction('${menu.id}', 'edit')">${t("edit")}</button>
           <button type="button" onclick="runInvoiceMenuAction('${menu.id}', 'payment')">${t("addPayment")}</button>
-          <button type="button" onclick="runInvoiceMenuAction('${menu.id}', 'simple')">${t("printSimple")}</button>
-          <button type="button" onclick="runInvoiceMenuAction('${menu.id}', 'tax')">${t("printB2bTax")}</button>
+          <button type="button" onclick="runInvoiceMenuAction('${menu.id}', 'save-tax')">${t("saveTaxInvoicePdf")}</button>
+          <button type="button" onclick="runInvoiceMenuAction('${menu.id}', 'save-simple')">${t("saveSimpleInvoicePdf")}</button>
+          <button type="button" onclick="runInvoiceMenuAction('${menu.id}', 'print-tax')">${t("printTaxInvoice")}</button>
+          <button type="button" onclick="runInvoiceMenuAction('${menu.id}', 'print-simple')">${t("printSimpleInvoiceOnly")}</button>
           <button class="danger" type="button" onclick="runInvoiceMenuAction('${menu.id}', 'delete')">${t("delete")}</button>
         </div>
       `;
@@ -7736,13 +7811,21 @@
         render();
         openAddPaymentModal(id);
       }
-      if (action === "simple") {
+      if (action === "save-simple" || action === "simple") {
         render();
-        downloadInvoicePdf(id, "simple");
+        saveInvoicePdf(id, "simple");
       }
-      if (action === "tax") {
+      if (action === "save-tax" || action === "tax") {
         render();
-        downloadInvoicePdf(id, "tax");
+        saveInvoicePdf(id, "tax");
+      }
+      if (action === "print-simple") {
+        render();
+        printInvoice(id, "simple");
+      }
+      if (action === "print-tax") {
+        render();
+        printInvoice(id, "tax");
       }
       if (action === "delete") {
         render();
@@ -7766,8 +7849,10 @@
             <div class="actions">
               <button onclick="editInvoice('${invoice.id}')">${t("edit")}</button>
               <button onclick="openAddPaymentModal('${invoice.id}')">${t("addPayment")}</button>
-              <button onclick="downloadInvoicePdf('${invoice.id}', 'simple')">${t("printSimpleInvoice")}</button>
-              <button class="primary" onclick="downloadInvoicePdf('${invoice.id}', 'tax')">${t("printB2bTaxInvoice")}</button>
+              <button onclick="saveInvoicePdf('${invoice.id}', 'simple')">${t("saveSimpleInvoicePdf")}</button>
+              <button onclick="printInvoice('${invoice.id}', 'simple')">${t("print")}</button>
+              <button class="primary" onclick="saveInvoicePdf('${invoice.id}', 'tax')">${t("saveTaxInvoicePdf")}</button>
+              <button onclick="printInvoice('${invoice.id}', 'tax')">${t("print")}</button>
             </div>
           </div>
         </div>
@@ -7875,7 +7960,7 @@
       const viewportWidth = window.innerWidth || 360;
       const viewportHeight = window.innerHeight || 640;
       const left = rect ? Math.min(viewportWidth - width - 10, Math.max(10, rect.right - width)) : 10;
-      const top = rect ? Math.min(viewportHeight - 150, Math.max(10, rect.bottom + 6)) : 80;
+      const top = rect ? Math.max(10, Math.min(viewportHeight - 150, Math.max(10, rect.bottom + 6))) : 80;
       state.customerActionMenu = { id, left, top };
       state.invoiceActionMenu = null;
       state.paymentActionMenu = null;
@@ -8592,24 +8677,149 @@
       return btoa(binary);
     }
 
-    function downloadInvoicePdf(id, type) {
-      printInvoice(id, type);
+    async function saveDocumentAsPdf(html, filename = "zaki-document.pdf") {
+      try {
+        const blob = await createPdfBlobFromHtml(html, filename);
+        await sharePdfBlob(blob, filename);
+      } catch (error) {
+        if (error?.name === "AbortError") return;
+        console.error("Save PDF failed", error);
+        showAppMessage(t("pdfSaveFailed"));
+        openInvoicePrintFrame(html, filename);
+      }
     }
 
-    function printInvoice(id, type) {
+    async function createPdfBlobFromHtml(html, filename = "zaki-document.pdf") {
+      if (typeof html2pdf === "undefined") {
+        throw new Error("html2pdf library is not loaded");
+      }
+
+      const wrapper = document.createElement("div");
+      wrapper.innerHTML = `<style>${printWindowStyles()}</style>${html}`;
+      wrapper.style.background = "#ffffff";
+      wrapper.style.width = "210mm";
+      wrapper.style.minHeight = "297mm";
+      wrapper.style.padding = "0";
+      wrapper.style.margin = "0";
+      wrapper.style.position = "fixed";
+      wrapper.style.left = "-9999px";
+      wrapper.style.top = "0";
+      wrapper.style.zIndex = "-1";
+
+      document.body.appendChild(wrapper);
+
+      const options = {
+        margin: 0,
+        filename,
+        image: {
+          type: "jpeg",
+          quality: 0.98
+        },
+        html2canvas: {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: "#ffffff",
+          scrollX: 0,
+          scrollY: 0
+        },
+        jsPDF: {
+          unit: "mm",
+          format: "a4",
+          orientation: "portrait"
+        },
+        pagebreak: {
+          mode: ["avoid-all", "css", "legacy"]
+        }
+      };
+
+      try {
+        return await html2pdf()
+          .set(options)
+          .from(wrapper)
+          .outputPdf("blob");
+      } finally {
+        wrapper.remove();
+      }
+    }
+
+    async function sharePdfBlob(blob, filename = "zaki-document.pdf") {
+      if (typeof File === "function") {
+        const file = new File([blob], filename, { type: "application/pdf" });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            title: filename,
+            text: "Zaki Invoice PDF",
+            files: [file]
+          });
+          return;
+        }
+      }
+
+      fallbackDownloadPdf(blob, filename);
+    }
+
+    function fallbackDownloadPdf(blob, filename = "zaki-document.pdf") {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+    }
+
+    function safePdfFilename(value, fallback = "zaki-document") {
+      const name = String(value || fallback)
+        .trim()
+        .replace(/[\\/:*?"<>|]+/g, "-")
+        .replace(/\s+/g, "-");
+      return `${name || fallback}.pdf`;
+    }
+
+    function invoicePdfFilename(invoice, type) {
+      const suffix = type === "simple" ? "simple-invoice" : "tax-invoice";
+      return safePdfFilename(`${invoice?.number || "invoice"}-${suffix}`);
+    }
+
+    function saveInvoicePdf(id, type = "tax") {
       const invoice = db.invoices.find(item => item.id === id);
       if (!invoice) return;
       const html = renderPrintableInvoice(invoice, type);
+      const filename = invoicePdfFilename(invoice, type);
+      saveDocumentAsPdf(html, filename);
+    }
+
+    function downloadInvoicePdf(id, type) {
+      saveInvoicePdf(id, type);
+    }
+
+    function printInvoice(id, type = "tax") {
+      const invoice = db.invoices.find(item => item.id === id);
+      if (!invoice) return;
+      const html = renderPrintableInvoice(invoice, type);
+      const filename = invoicePdfFilename(invoice, type);
       document.getElementById("printArea").innerHTML = html;
-      openInvoicePrintFrame(html, invoice.number || "invoice");
+      openInvoicePrintFrame(html, filename);
     }
 
     function printPaymentReceipt(invoiceId, paymentData = null) {
       const invoice = db.invoices.find(item => item.id === invoiceId);
       if (!invoice) return;
-      const html = renderPaymentReceipt(invoice, paymentData);
+      const data = normalizePaymentReceiptData(invoice, paymentData);
+      const html = renderPaymentReceipt(invoice, data);
+      const filename = safePdfFilename(data?.receiptNo || `${invoice.number || "invoice"}-payment-receipt`);
       document.getElementById("printArea").innerHTML = html;
-      openInvoicePrintFrame(html, (invoice.number || "invoice") + "-payment-receipt");
+      openInvoicePrintFrame(html, filename);
+    }
+
+    function savePaymentReceiptPdf(invoiceId, paymentData = null) {
+      const invoice = db.invoices.find(item => item.id === invoiceId);
+      if (!invoice) return;
+      const data = normalizePaymentReceiptData(invoice, paymentData);
+      const html = renderPaymentReceipt(invoice, data);
+      const filename = safePdfFilename(data?.receiptNo || `${invoice.number || "invoice"}-payment-receipt`);
+      saveDocumentAsPdf(html, filename);
     }
 
     function printWindowStyles() {
@@ -9507,6 +9717,17 @@
           ${renderPrintFooterArea("statement")}
         </section>
       `;
+    }
+
+    function normalizePaymentReceiptData(invoice, paymentData = null) {
+      if (!paymentData) return null;
+      if (typeof paymentData === "object") return paymentData;
+      const payments = getInvoicePayments(invoice, totalsForInvoice(invoice).grand);
+      const index = typeof paymentData === "number"
+        ? paymentData
+        : payments.findIndex(payment => String(payment.id || payment.receiptNo || "") === String(paymentData));
+      if (index < 0) return null;
+      return paymentRecordPayload(invoice, index);
     }
 
     function renderPaymentReceipt(invoice, paymentData = null) {
