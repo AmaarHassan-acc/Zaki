@@ -3973,7 +3973,10 @@
         print: "Print",
         pdfSaveFailed: "Could not generate PDF. Please try again.",
         pdfGeneratedEmpty: "Generated PDF appears empty. Please try again.",
+        popupBlockedPdfDownloaded: "Popup blocked. PDF downloaded instead.",
         pdfSaved: "PDF is ready.",
+        preparingPdf: "Preparing PDF...",
+        pdfPreviewMessage: "Your document will open here in a moment.",
         saveTaxInvoicePdf: "Save Tax Invoice PDF",
         saveSimpleInvoicePdf: "Save Simple Invoice PDF",
         saveReceiptPdf: "Save Receipt PDF",
@@ -4265,7 +4268,10 @@
         print: "طباعة",
         pdfSaveFailed: "تعذر إنشاء ملف PDF. يرجى المحاولة مرة أخرى.",
         pdfGeneratedEmpty: "ملف PDF الناتج فارغ. يرجى المحاولة مرة أخرى.",
+        popupBlockedPdfDownloaded: "تم حظر النافذة المنبثقة. تم تنزيل ملف PDF بدلاً من ذلك.",
         pdfSaved: "ملف PDF جاهز.",
+        preparingPdf: "جاري تجهيز ملف PDF...",
+        pdfPreviewMessage: "سيتم فتح المستند هنا خلال لحظات.",
         saveTaxInvoicePdf: "حفظ فاتورة ضريبية PDF",
         saveSimpleInvoicePdf: "حفظ فاتورة مبسطة PDF",
         saveReceiptPdf: "حفظ سند قبض PDF",
@@ -5565,6 +5571,91 @@
       const html = renderPrintableCustomerStatement(customer, transactions, { fromDate, toDate });
       const filename = safePdfFilename(`${customer.name || "customer"}-statement`);
       saveDocumentAsPdf(html, filename);
+    }
+
+    function renderPdfPreviewLoadingHtml(filename = "zaki-document.pdf") {
+      const isRtl = state.lang === "ar";
+      return `
+        <!doctype html>
+        <html lang="${isRtl ? "ar" : "en"}" dir="${isRtl ? "rtl" : "ltr"}">
+          <head>
+            <meta charset="utf-8">
+            <title>${escapeHtml(filename)}</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <style>
+              * { box-sizing: border-box; }
+              body {
+                margin: 0;
+                min-height: 100vh;
+                display: grid;
+                place-items: center;
+                padding: 20px;
+                font-family: Arial, Helvetica, sans-serif;
+                background: #F7F4F1;
+                color: #221C1D;
+              }
+              .pdf-preview-loading {
+                width: min(100%, 360px);
+                padding: 24px;
+                border-radius: 28px;
+                background: #fff;
+                border: 1px solid rgba(231, 222, 218, 0.86);
+                box-shadow: 0 24px 70px rgba(34, 28, 29, 0.16);
+                text-align: center;
+              }
+              .pdf-preview-logo {
+                width: 76px;
+                height: 76px;
+                margin: 0 auto 14px;
+                display: block;
+                object-fit: contain;
+                border-radius: 22px;
+              }
+              .pdf-preview-loading h1 {
+                margin: 0 0 8px;
+                font-size: 20px;
+                font-weight: 900;
+                color: #7A1F2B;
+              }
+              .pdf-preview-loading p {
+                margin: 0;
+                color: #4B4244;
+                font-size: 13px;
+                line-height: 1.5;
+              }
+              .pdf-preview-file {
+                margin-top: 14px;
+                padding: 9px 11px;
+                border-radius: 999px;
+                background: #F7F4F1;
+                color: #221C1D;
+                font-size: 12px;
+                font-weight: 800;
+                word-break: break-word;
+              }
+              .pdf-preview-spinner {
+                width: 30px;
+                height: 30px;
+                margin: 18px auto 0;
+                border: 3px solid rgba(122, 31, 43, 0.16);
+                border-top-color: #7A1F2B;
+                border-radius: 50%;
+                animation: spin 0.9s linear infinite;
+              }
+              @keyframes spin { to { transform: rotate(360deg); } }
+            </style>
+          </head>
+          <body>
+            <main class="pdf-preview-loading">
+              <img class="pdf-preview-logo" src="${BRAND_LOGO_DATA_URL}" alt="Zaki Invoice">
+              <h1>${escapeHtml(t("preparingPdf"))}</h1>
+              <p>${escapeHtml(t("pdfPreviewMessage"))}</p>
+              <div class="pdf-preview-file">${escapeHtml(filename)}</div>
+              <div class="pdf-preview-spinner" aria-hidden="true"></div>
+            </main>
+          </body>
+        </html>
+      `;
     }
 
     function customerNameButton(customer, fallback = "", extraClass = "", invoiceId = "") {
@@ -8645,12 +8736,30 @@
     }
 
     async function saveDocumentAsPdf(html, filename = "zaki-document.pdf") {
+      const previewWindow = window.open("", "_blank");
+
       try {
+        if (previewWindow) {
+          previewWindow.document.write(renderPdfPreviewLoadingHtml(filename));
+          previewWindow.document.close();
+        }
+
         const blob = await createPdfBlobFromHtml(html, filename);
-        await sharePdfBlob(blob, filename);
+        const url = URL.createObjectURL(blob);
+
+        if (previewWindow) {
+          previewWindow.location.href = url;
+          setTimeout(() => URL.revokeObjectURL(url), 60000);
+          return;
+        }
+
+        openPdfBlobInNewTab(blob, filename);
       } catch (error) {
         if (error?.name === "AbortError") return;
         console.error("Save PDF failed", error);
+        if (previewWindow && !previewWindow.closed) {
+          previewWindow.close();
+        }
         showAppMessage(String(error?.message || "").includes("empty") ? t("pdfGeneratedEmpty") : t("pdfSaveFailed"));
       }
     }
@@ -8733,20 +8842,18 @@
       }));
     }
 
-    async function sharePdfBlob(blob, filename = "zaki-document.pdf") {
-      if (typeof File === "function") {
-        const file = new File([blob], filename, { type: "application/pdf" });
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          await navigator.share({
-            title: filename,
-            text: "Zaki Invoice PDF",
-            files: [file]
-          });
-          return;
-        }
+    function openPdfBlobInNewTab(blob, filename = "zaki-document.pdf") {
+      const url = URL.createObjectURL(blob);
+      const opened = window.open(url, "_blank");
+
+      if (!opened) {
+        fallbackDownloadPdf(blob, filename);
+        showAppMessage(t("popupBlockedPdfDownloaded") || "Popup blocked. PDF downloaded instead.");
+        setTimeout(() => URL.revokeObjectURL(url), 1500);
+        return;
       }
 
-      fallbackDownloadPdf(blob, filename);
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
     }
 
     function fallbackDownloadPdf(blob, filename = "zaki-document.pdf") {
