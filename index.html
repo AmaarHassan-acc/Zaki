@@ -3457,6 +3457,44 @@
       display: none;
     }
 
+    body.print-sheet-mode {
+      background: #fff;
+      overflow: hidden;
+    }
+
+    body.print-sheet-mode .app,
+    body.print-sheet-mode .bottom-nav,
+    body.print-sheet-mode .modal-root {
+      display: none !important;
+    }
+
+    body.print-sheet-mode #printArea {
+      display: block !important;
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      width: 100vw;
+      height: 100dvh;
+      margin: 0;
+      padding: 8px 0;
+      overflow: auto;
+      background: #fff;
+    }
+
+    body.print-sheet-mode #printArea .app-print-page {
+      width: 196mm;
+      margin: 0 auto;
+      transform: scale(var(--app-print-screen-scale, 1));
+      transform-origin: top center;
+    }
+
+    body.print-sheet-mode #printArea .print-sheet {
+      width: 196mm;
+      min-height: 283mm;
+      margin: 0 auto;
+      background: #fff;
+    }
+
     @media (min-width: 720px) {
       .app {
         padding: 24px 24px 112px;
@@ -3693,7 +3731,7 @@
 
     @page {
       size: A4;
-      margin: 7mm;
+      margin: 0;
     }
 
     @media print {
@@ -3709,9 +3747,10 @@
 
       #printArea {
         display: block !important;
-        width: 196mm;
-        height: 283mm;
-        margin: 0 auto;
+        width: 210mm;
+        height: 297mm;
+        margin: 0;
+        padding: 7mm;
         overflow: hidden !important;
       }
 
@@ -9602,6 +9641,9 @@
       printArea.innerHTML = `<div class="app-print-page">${html}</div>`;
       const scale = measureTopLevelPrintScale(printArea);
       document.documentElement.style.setProperty("--app-print-scale", String(scale));
+      document.documentElement.style.setProperty("--app-print-screen-scale", String(measureTopLevelPrintScreenScale()));
+      document.body.classList.add("print-sheet-mode");
+      void printArea.offsetHeight;
       window.focus();
       window.print();
     }
@@ -9619,6 +9661,12 @@
       const rect = box.getBoundingClientRect();
       box.remove();
       return { width: rect.width || 740, height: rect.height || 1070 };
+    }
+
+    function measureTopLevelPrintScreenScale() {
+      const page = measurePrintCssMillimeters(196, 283);
+      const availableWidth = Math.max(280, (window.innerWidth || 360) - 12);
+      return Math.min(1, Math.max(0.2, availableWidth / Math.max(1, page.width)));
     }
 
     function measureTopLevelPrintScale(printArea) {
@@ -9648,6 +9696,14 @@
       }
 
       return scale;
+    }
+
+    function cleanupTopLevelPrintView() {
+      const printArea = document.getElementById("printArea");
+      if (printArea) printArea.innerHTML = "";
+      document.documentElement.style.setProperty("--app-print-scale", "1");
+      document.documentElement.style.setProperty("--app-print-screen-scale", "1");
+      document.body.classList.remove("print-sheet-mode");
     }
 
     async function shareCurrentPdf() {
@@ -12028,14 +12084,15 @@
     }
 
     window.addEventListener("afterprint", () => {
-      document.getElementById("printArea").innerHTML = "";
-      document.documentElement.style.setProperty("--app-print-scale", "1");
+      cleanupTopLevelPrintView();
     });
 
     window.addEventListener("beforeprint", () => {
       const printArea = document.getElementById("printArea");
       if (printArea?.innerHTML.trim()) {
         document.documentElement.style.setProperty("--app-print-scale", String(measureTopLevelPrintScale(printArea)));
+        document.documentElement.style.setProperty("--app-print-screen-scale", String(measureTopLevelPrintScreenScale()));
+        document.body.classList.add("print-sheet-mode");
       }
     });
 
