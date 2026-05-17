@@ -3035,6 +3035,8 @@
       align-items: center;
       gap: 8px;
       flex: 0 0 auto;
+      flex-wrap: wrap;
+      justify-content: flex-end;
     }
 
     .in-app-pdf-actions a,
@@ -3660,6 +3662,32 @@
       .statement-date-input-row .statement-date-and {
         padding: 0;
         text-align: center;
+      }
+
+      .in-app-pdf-toolbar {
+        align-items: flex-start;
+        gap: 6px;
+      }
+
+      .in-app-pdf-title span {
+        max-width: 30vw;
+      }
+
+      .in-app-pdf-actions {
+        gap: 6px;
+      }
+
+      .in-app-pdf-actions a,
+      .in-app-pdf-actions button {
+        min-height: 36px;
+        padding: 7px 9px;
+        font-size: 11px;
+      }
+
+      .in-app-pdf-actions .share-icon-btn {
+        flex-basis: 36px !important;
+        width: 36px;
+        min-width: 36px;
       }
     }
 
@@ -4526,6 +4554,9 @@
         wrongAdminPassword: "Incorrect password.",
         sellerAddressRequiredTitle: "Seller Address Required",
         sellerAddressRequiredMessage: "Please fill the seller address before using the app.",
+        sellerProfileRequiredTitle: "Complete Seller Settings",
+        sellerProfileRequiredMessage: "Please fill all seller settings before using the app.",
+        companyLogoRequired: "Company logo is required.",
         sellerName: "Seller Name",
         vatNumber: "VAT Number",
         fullAddress: "Full Address",
@@ -4832,6 +4863,9 @@
         wrongAdminPassword: "كلمة المرور غير صحيحة.",
         sellerAddressRequiredTitle: "عنوان البائع مطلوب",
         sellerAddressRequiredMessage: "يرجى إدخال عنوان البائع قبل استخدام التطبيق.",
+        sellerProfileRequiredTitle: "استكمال إعدادات البائع",
+        sellerProfileRequiredMessage: "يرجى تعبئة جميع إعدادات البائع قبل استخدام التطبيق.",
+        companyLogoRequired: "شعار الشركة مطلوب.",
         sellerName: "اسم البائع",
         vatNumber: "الرقم الضريبي",
         fullAddress: "العنوان الكامل",
@@ -6366,7 +6400,7 @@
       if (state.screen === "payments") app.innerHTML = renderPaymentsPage();
       if (state.screen === "settings") app.innerHTML = renderSettings();
       if (state.screen === "view") app.innerHTML = renderInvoiceView();
-      showRequiredSellerAddressGateIfNeeded();
+      showRequiredSellerProfileGateIfNeeded();
     }
 
     function renderKeepingFocus() {
@@ -8649,7 +8683,7 @@
             <input name="vatNumber" value="${escapeHtml(settings.vatNumber)}" required>
           </label>
           <label>${t("crNumber")}
-            <input name="crNumber" value="${escapeHtml(settings.crNumber || "")}">
+            <input name="crNumber" value="${escapeHtml(settings.crNumber || "")}" required>
           </label>
           <label>${t("fullAddress")}
             <input name="address" value="${escapeHtml(addressSummary)}" readonly>
@@ -8657,15 +8691,15 @@
           <button type="button" onclick="openSellerAddressModal()">${t("addEditAddress")}</button>
           <div class="split">
             <label>${t("phone")}
-              <input name="phone" value="${escapeHtml(settings.phone)}">
+              <input name="phone" value="${escapeHtml(settings.phone)}" required>
             </label>
             <label>${t("email")}
-              <input type="email" name="email" value="${escapeHtml(settings.email)}">
+              <input type="email" name="email" value="${escapeHtml(settings.email)}" required>
             </label>
           </div>
           <div class="logo-uploader">
             <label>${t("companyLogo")}
-              <input type="file" accept="image/*" onchange="handleLogoUpload(event)">
+              <input type="file" accept="image/*" onchange="handleLogoUpload(event)" ${settings.logoDataUrl ? "" : "required"}>
             </label>
             ${settings.logoDataUrl ? `
               <img class="logo-preview" src="${escapeHtml(settings.logoDataUrl)}" alt="${t("companyLogo")}">
@@ -8746,6 +8780,24 @@
       ].some(value => String(value || "").trim());
     }
 
+    function sellerProfileMissingFields(settings = db.settings) {
+      const missing = [];
+      if (!String(settings.sellerName || "").trim()) missing.push(t("sellerName"));
+      if (!String(settings.vatNumber || "").trim()) missing.push(t("vatNumber"));
+      if (!String(settings.crNumber || "").trim()) missing.push(t("crNumber"));
+      if (!String(sellerAddressSummary(settings) || "").trim()) missing.push(t("fullAddress"));
+      if (!String(settings.phone || "").trim()) missing.push(t("phone"));
+      if (!String(settings.email || "").trim()) missing.push(t("email"));
+      if (!String(settings.logoDataUrl || "").trim()) missing.push(t("companyLogo"));
+      if (!String(settings.invoicePrefix || "").trim()) missing.push(t("invoicePrefix"));
+      if (numberValue(settings.nextInvoiceNumber, 0) < 1) missing.push(t("nextInvoiceNumber"));
+      return missing;
+    }
+
+    function sellerProfileIsIncomplete(settings = db.settings) {
+      return sellerProfileMissingFields(settings).length > 0;
+    }
+
     function sellerAddressIsMissing(settings = db.settings) {
       return !String(sellerAddressSummary(settings) || "").trim();
     }
@@ -8762,14 +8814,14 @@
       ].filter(value => String(value || "").trim()).join(", ");
     }
 
-    function showRequiredSellerAddressGateIfNeeded() {
-      if (!sellerAddressIsMissing()) return;
-      if (modalContext && modalContext.type !== "required-seller-address") return;
+    function showRequiredSellerProfileGateIfNeeded() {
+      if (!sellerProfileIsIncomplete()) return;
+      if (modalContext && modalContext.type !== "required-seller-profile") return;
       const root = document.getElementById("modalRoot");
       if (!root) return;
-      if (modalContext?.type === "required-seller-address" && root.innerHTML.trim()) return;
-      modalContext = { type: "required-seller-address" };
-      root.innerHTML = renderRequiredSellerAddressModal();
+      if (modalContext?.type === "required-seller-profile" && root.innerHTML.trim()) return;
+      modalContext = { type: "required-seller-profile", error: "" };
+      root.innerHTML = renderRequiredSellerProfileModal();
     }
 
     function sellerAddressPayloadFromForm(formOrData) {
@@ -8785,18 +8837,57 @@
       };
     }
 
-    function renderRequiredSellerAddressModal() {
+    function sellerProfilePayloadFromForm(form, logoDataUrl = db.settings.logoDataUrl || "") {
+      const data = new FormData(form);
+      const nextAddress = sellerAddressPayloadFromForm(data);
+      const next = {
+        sellerName: String(data.get("sellerName") || "").trim(),
+        vatNumber: String(data.get("vatNumber") || "").trim(),
+        crNumber: String(data.get("crNumber") || "").trim(),
+        ...nextAddress,
+        phone: String(data.get("phone") || "").trim(),
+        email: String(data.get("email") || "").trim(),
+        logoDataUrl,
+        invoicePrefix: String(data.get("invoicePrefix") || "INV-").trim() || "INV-",
+        nextInvoiceNumber: Math.max(1, Math.floor(numberValue(data.get("nextInvoiceNumber"), 1)))
+      };
+      return { ...next, address: sellerAddressSummary({ ...db.settings, ...next }) };
+    }
+
+    function readLogoFileAsDataUrl(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(reader.error || new Error("Logo upload failed"));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function renderRequiredSellerProfileModal() {
       const settings = db.settings || {};
+      const error = modalContext?.error || "";
       return `
         <div class="modal-backdrop profile-backdrop">
-          <form class="modal stack" role="dialog" aria-modal="true" onsubmit="saveRequiredSellerAddressModal(event)" onclick="event.stopPropagation()">
+          <form class="modal stack" role="dialog" aria-modal="true" onsubmit="saveRequiredSellerProfileModal(event)" onclick="event.stopPropagation()">
             <div class="section-head">
-              <h2>${t("sellerAddressRequiredTitle")}</h2>
+              <h2>${t("sellerProfileRequiredTitle")}</h2>
             </div>
-            <div class="small muted">${t("sellerAddressRequiredMessage")}</div>
+            <div class="small muted">${t("sellerProfileRequiredMessage")}</div>
+            ${error ? `<div class="small" style="color: var(--danger); font-weight: 900;">${escapeHtml(error)}</div>` : ""}
+            <label>${t("sellerName")}
+              <input name="sellerName" value="${escapeHtml(settings.sellerName || "")}" required autofocus>
+            </label>
+            <div class="split">
+              <label>${t("vatNumber")}
+                <input name="vatNumber" value="${escapeHtml(settings.vatNumber || "")}" required>
+              </label>
+              <label>${t("crNumber")}
+                <input name="crNumber" value="${escapeHtml(settings.crNumber || "")}" required>
+              </label>
+            </div>
             <div class="split">
               <label>${t("buildingNo")}
-                <input name="sellerBuildingNo" value="${escapeHtml(settings.sellerBuildingNo || "")}" required autofocus>
+                <input name="sellerBuildingNo" value="${escapeHtml(settings.sellerBuildingNo || "")}" required>
               </label>
               <label>${t("street")}
                 <input name="sellerStreet" value="${escapeHtml(settings.sellerStreet || "")}" required>
@@ -8821,17 +8912,53 @@
             <label>${t("additionalNo")}
               <input name="sellerAdditionalNo" value="${escapeHtml(settings.sellerAdditionalNo || "")}">
             </label>
-            <button class="primary" type="submit">${t("saveAddress")}</button>
+            <div class="split">
+              <label>${t("phone")}
+                <input name="phone" value="${escapeHtml(settings.phone || "")}" required>
+              </label>
+              <label>${t("email")}
+                <input type="email" name="email" value="${escapeHtml(settings.email || "")}" required>
+              </label>
+            </div>
+            <div class="logo-uploader">
+              <label>${t("companyLogo")}
+                <input type="file" name="companyLogo" accept="image/*" ${settings.logoDataUrl ? "" : "required"}>
+              </label>
+              ${settings.logoDataUrl ? `<img class="logo-preview" src="${escapeHtml(settings.logoDataUrl)}" alt="${t("companyLogo")}">` : ""}
+            </div>
+            <div class="split">
+              <label>${t("invoicePrefix")}
+                <input name="invoicePrefix" value="${escapeHtml(settings.invoicePrefix || "INV-")}" required>
+              </label>
+              <label>${t("nextInvoiceNumber")}
+                <input type="number" min="1" step="1" name="nextInvoiceNumber" value="${escapeHtml(settings.nextInvoiceNumber || 1)}" required>
+              </label>
+            </div>
+            <button class="primary" type="submit">${t("saveSettings")}</button>
           </form>
         </div>
       `;
     }
 
-    function saveRequiredSellerAddressModal(event) {
+    async function saveRequiredSellerProfileModal(event) {
       event.preventDefault();
-      const nextAddress = sellerAddressPayloadFromForm(event.target);
-      const address = sellerAddressSummary({ ...db.settings, ...nextAddress });
-      db.settings = { ...db.settings, ...nextAddress, address };
+      const form = event.target;
+      const logoFile = form.elements.companyLogo?.files?.[0];
+      let logoDataUrl = db.settings.logoDataUrl || "";
+      if (logoFile) logoDataUrl = await readLogoFileAsDataUrl(logoFile);
+      if (!logoDataUrl) {
+        modalContext = { type: "required-seller-profile", error: t("companyLogoRequired") };
+        document.getElementById("modalRoot").innerHTML = renderRequiredSellerProfileModal();
+        return;
+      }
+      const nextSettings = { ...db.settings, ...sellerProfilePayloadFromForm(form, logoDataUrl) };
+      const missing = sellerProfileMissingFields(nextSettings);
+      if (missing.length) {
+        modalContext = { type: "required-seller-profile", error: missing.join(", ") };
+        document.getElementById("modalRoot").innerHTML = renderRequiredSellerProfileModal();
+        return;
+      }
+      db.settings = nextSettings;
       saveDb();
       modalContext = null;
       document.getElementById("modalRoot").innerHTML = "";
@@ -9310,7 +9437,7 @@
     }
 
     function closeModal() {
-      if (modalContext?.type === "required-seller-address") return;
+      if (modalContext?.type === "required-seller-profile") return;
       if (modalContext?.type === "pdf-preview" && modalContext.pdfUrl) {
         URL.revokeObjectURL(modalContext.pdfUrl);
       }
@@ -9423,7 +9550,7 @@
 
     function openInAppPdfPreview(blob, html, filename = "zaki-document.pdf") {
       const url = URL.createObjectURL(blob);
-      modalContext = { type: "pdf-preview", pdfUrl: url, pdfBlob: blob, filename };
+      modalContext = { type: "pdf-preview", pdfUrl: url, pdfBlob: blob, printHtml: html, filename };
       document.getElementById("modalRoot").innerHTML = renderInAppPdfPreview(html, filename, url);
     }
 
@@ -9442,6 +9569,7 @@
               </div>
               <div class="in-app-pdf-actions">
                 <a class="primary" href="${escapeHtml(pdfUrl)}" download="${escapeHtml(filename)}">${t("savePdf")}</a>
+                <button type="button" onclick="printCurrentPdfPreview()">${t("print")}</button>
                 <button class="share-icon-btn" type="button" aria-label="${t("sharePdf")}" title="${t("sharePdf")}" onclick="shareCurrentPdf()">${shareIconSvg()}</button>
                 <button type="button" onclick="closeModal()">${t("close")}</button>
               </div>
@@ -9449,6 +9577,25 @@
           </section>
         </div>
       `;
+    }
+
+    function printCurrentPdfPreview() {
+      if (modalContext?.type !== "pdf-preview") return;
+      const frame = document.querySelector(".in-app-pdf-frame");
+      const frameWindow = frame?.contentWindow;
+      if (frameWindow) {
+        try {
+          frameWindow.prepareFramePrintScale?.();
+          frameWindow.focus();
+          setTimeout(() => frameWindow.print(), 80);
+          return;
+        } catch (error) {
+          console.warn("Preview iframe print failed, using print frame fallback", error);
+        }
+      }
+      if (modalContext.printHtml) {
+        openInvoicePrintFrame(modalContext.printHtml, modalContext.filename || "zaki-document.pdf");
+      }
     }
 
     async function shareCurrentPdf() {
@@ -9493,6 +9640,10 @@
               body {
                 padding: 10px;
               }
+              @page {
+                size: A4;
+                margin: 0;
+              }
               .in-frame-page {
                 width: 100%;
                 min-height: 100vh;
@@ -9514,6 +9665,58 @@
                 min-height: 283mm;
                 margin: 0 auto;
               }
+              @media print {
+                html,
+                body {
+                  width: 210mm !important;
+                  height: 297mm !important;
+                  min-height: 297mm !important;
+                  margin: 0 !important;
+                  padding: 0 !important;
+                  background: #fff !important;
+                  overflow: hidden !important;
+                }
+                .in-frame-page {
+                  display: block !important;
+                  width: 210mm !important;
+                  height: 297mm !important;
+                  min-height: 297mm !important;
+                  margin: 0 !important;
+                  padding: 0 !important;
+                  background: #fff !important;
+                  overflow: hidden !important;
+                }
+                .in-frame-sheet {
+                  width: 210mm !important;
+                  min-height: 297mm !important;
+                  height: auto !important;
+                  padding: 7mm !important;
+                  margin: 0 !important;
+                  background: #fff !important;
+                  box-shadow: none !important;
+                  transform: scale(var(--frame-print-scale, 1)) !important;
+                  transform-origin: top left !important;
+                }
+                .in-frame-sheet .print-sheet {
+                  width: 196mm !important;
+                  min-height: 0 !important;
+                  height: auto !important;
+                  max-height: none !important;
+                  margin: 0 auto !important;
+                  box-shadow: none !important;
+                  overflow: visible !important;
+                  break-after: avoid !important;
+                  page-break-after: avoid !important;
+                }
+                .print-main,
+                .print-footer-area {
+                  break-inside: avoid !important;
+                  page-break-inside: avoid !important;
+                }
+                .print-footer-area {
+                  margin-top: 3mm !important;
+                }
+              }
             </style>
           </head>
           <body>
@@ -9521,19 +9724,54 @@
               <div class="in-frame-sheet">${html}</div>
             </main>
             <script>
+              function measureFrameCssMillimeters(widthMm, heightMm) {
+                var box = document.createElement("div");
+                box.style.position = "fixed";
+                box.style.left = "0";
+                box.style.top = "0";
+                box.style.width = widthMm + "mm";
+                box.style.height = heightMm + "mm";
+                box.style.pointerEvents = "none";
+                box.style.opacity = "0.01";
+                document.body.appendChild(box);
+                var rect = box.getBoundingClientRect();
+                box.remove();
+                return { width: rect.width || 740, height: rect.height || 1070 };
+              }
+
+              function prepareFramePrintScale() {
+                var sheet = document.querySelector(".print-sheet");
+                if (!sheet) return 1;
+                var target = measureFrameCssMillimeters(196, 283);
+                var contentWidth = Math.max(sheet.scrollWidth || 1, sheet.getBoundingClientRect().width || 1);
+                var contentHeight = Math.max(sheet.scrollHeight || 1, sheet.getBoundingClientRect().height || 1);
+                var scale = Math.min(1, target.width / contentWidth, target.height / contentHeight);
+                scale = Math.max(0.18, Math.min(1, scale - 0.01));
+                document.documentElement.style.setProperty("--frame-print-scale", String(scale));
+                return scale;
+              }
+
               function fitFrameSheet() {
                 var sheet = document.querySelector(".in-frame-sheet");
                 if (!sheet) return;
-                sheet.style.transform = "scale(1)";
+                sheet.style.transform = "";
+                document.documentElement.style.setProperty("--frame-scale", "1");
                 var rect = sheet.getBoundingClientRect();
                 var available = Math.max(280, window.innerWidth - 20);
                 var scale = Math.min(1, available / Math.max(rect.width || 1, 1));
                 document.documentElement.style.setProperty("--frame-scale", String(scale));
                 document.querySelector(".in-frame-page").style.height = Math.ceil((rect.height || 1123) * scale + 20) + "px";
               }
+              window.prepareFramePrintScale = prepareFramePrintScale;
               window.addEventListener("load", fitFrameSheet);
               window.addEventListener("resize", fitFrameSheet);
+              window.addEventListener("beforeprint", function () {
+                document.documentElement.style.setProperty("--frame-scale", "1");
+                prepareFramePrintScale();
+              });
+              window.addEventListener("afterprint", fitFrameSheet);
               setTimeout(fitFrameSheet, 250);
+              setTimeout(prepareFramePrintScale, 300);
             <\/script>
           </body>
         </html>`;
@@ -9809,36 +10047,13 @@
       });
       const pageWidthMm = 210;
       const pageHeightMm = 297;
-      const pageHeightPx = Math.max(1, Math.floor(canvas.width * (pageHeightMm / pageWidthMm)));
-      let sourceY = 0;
-      let pageIndex = 0;
-
-      while (sourceY < canvas.height) {
-        const remainingHeight = canvas.height - sourceY;
-        if (pageIndex > 0 && remainingHeight < pageHeightPx * 0.025) break;
-
-        const sliceHeight = Math.min(pageHeightPx, remainingHeight);
-        const pageCanvas = document.createElement("canvas");
-        pageCanvas.width = canvas.width;
-        pageCanvas.height = sliceHeight;
-        const ctx = pageCanvas.getContext("2d");
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
-        ctx.drawImage(canvas, 0, sourceY, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight);
-
-        if (pageIndex > 0 && isCanvasSliceBlank(pageCanvas)) {
-          sourceY += sliceHeight;
-          continue;
-        }
-
-        if (pageIndex > 0) pdf.addPage();
-        const imageData = pageCanvas.toDataURL("image/png");
-        const imageHeightMm = sliceHeight * pageWidthMm / canvas.width;
-        pdf.addImage(imageData, "PNG", 0, 0, pageWidthMm, imageHeightMm, undefined, "SLOW");
-
-        sourceY += sliceHeight;
-        pageIndex += 1;
-      }
+      const imageData = canvas.toDataURL("image/png");
+      const mmPerPixel = Math.min(pageWidthMm / Math.max(1, canvas.width), pageHeightMm / Math.max(1, canvas.height));
+      const imageWidthMm = canvas.width * mmPerPixel;
+      const imageHeightMm = canvas.height * mmPerPixel;
+      const x = Math.max(0, (pageWidthMm - imageWidthMm) / 2);
+      const y = 0;
+      pdf.addImage(imageData, "PNG", x, y, imageWidthMm, imageHeightMm, undefined, "SLOW");
 
       return pdf;
     }
@@ -9921,6 +10136,7 @@
       const safePdfUrl = escapeHtml(pdfUrl);
       const appTitle = escapeHtml("Zaki Invoice");
       const saveLabel = escapeHtml(t("savePdf") || "Save PDF");
+      const printLabel = escapeHtml(t("print") || "Print");
       const closeLabel = escapeHtml(t("close") || "Close");
 
       return `<!doctype html>
@@ -9950,6 +10166,7 @@
     </div>
     <div class="pdf-preview-actions">
       <a class="pdf-preview-save-btn" href="${safePdfUrl}" download="${safeTitle}">${saveLabel}</a>
+      <button type="button" onclick="prepareOnePagePrintScale(); window.print()">${printLabel}</button>
       <button type="button" onclick="window.close()">${closeLabel}</button>
     </div>
   </div>
@@ -9994,7 +10211,7 @@
       var scale = Math.min(1, target.width / contentWidth, target.height / contentHeight);
 
       // Keep all content on one A4 page. Very long statements may become small, but will not split.
-      scale = Math.max(0.38, Math.min(1, scale - 0.01));
+      scale = Math.max(0.18, Math.min(1, scale - 0.01));
       document.documentElement.style.setProperty("--print-scale", String(scale));
       return scale;
     }
@@ -10973,17 +11190,10 @@
       document.body.appendChild(iframe);
       const doc = iframe.contentDocument || iframe.contentWindow.document;
       doc.open();
-      doc.write(`<!doctype html>
-        <html>
-          <head>
-            <meta charset="utf-8">
-            <title>${escapeHtml(title)}</title>
-            <style>${printWindowStyles()}</style>
-          </head>
-          <body>${html}</body>
-        </html>`);
+      doc.write(buildInAppPdfFrameHtml(html));
       doc.close();
       setTimeout(() => {
+        iframe.contentWindow.prepareFramePrintScale?.();
         iframe.contentWindow.focus();
         iframe.contentWindow.print();
         setTimeout(() => {
