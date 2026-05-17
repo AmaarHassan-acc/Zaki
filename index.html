@@ -3708,7 +3708,17 @@
       }
 
       #printArea {
-        display: block;
+        display: block !important;
+        width: 196mm;
+        height: 283mm;
+        margin: 0 auto;
+        overflow: hidden !important;
+      }
+
+      #printArea .app-print-page {
+        width: 196mm;
+        transform: scale(var(--app-print-scale, 1));
+        transform-origin: top left;
       }
 
       .print-sheet {
@@ -9581,21 +9591,63 @@
 
     function printCurrentPdfPreview() {
       if (modalContext?.type !== "pdf-preview") return;
-      const frame = document.querySelector(".in-app-pdf-frame");
-      const frameWindow = frame?.contentWindow;
-      if (frameWindow) {
-        try {
-          frameWindow.prepareFramePrintScale?.();
-          frameWindow.focus();
-          setTimeout(() => frameWindow.print(), 80);
-          return;
-        } catch (error) {
-          console.warn("Preview iframe print failed, using print frame fallback", error);
-        }
-      }
       if (modalContext.printHtml) {
-        openInvoicePrintFrame(modalContext.printHtml, modalContext.filename || "zaki-document.pdf");
+        printHtmlDocument(modalContext.printHtml, modalContext.filename || "zaki-document.pdf");
       }
+    }
+
+    function printHtmlDocument(html, title = "zaki-document.pdf") {
+      const printArea = document.getElementById("printArea");
+      if (!printArea || !html) return;
+      printArea.innerHTML = `<div class="app-print-page">${html}</div>`;
+      const scale = measureTopLevelPrintScale(printArea);
+      document.documentElement.style.setProperty("--app-print-scale", String(scale));
+      window.focus();
+      window.print();
+    }
+
+    function measurePrintCssMillimeters(widthMm, heightMm) {
+      const box = document.createElement("div");
+      box.style.position = "fixed";
+      box.style.left = "0";
+      box.style.top = "0";
+      box.style.width = `${widthMm}mm`;
+      box.style.height = `${heightMm}mm`;
+      box.style.pointerEvents = "none";
+      box.style.opacity = "0.01";
+      document.body.appendChild(box);
+      const rect = box.getBoundingClientRect();
+      box.remove();
+      return { width: rect.width || 740, height: rect.height || 1070 };
+    }
+
+    function measureTopLevelPrintScale(printArea) {
+      const previousStyle = printArea.getAttribute("style");
+      printArea.style.display = "block";
+      printArea.style.position = "fixed";
+      printArea.style.left = "0";
+      printArea.style.top = "0";
+      printArea.style.width = "196mm";
+      printArea.style.height = "283mm";
+      printArea.style.margin = "0";
+      printArea.style.visibility = "hidden";
+      printArea.style.pointerEvents = "none";
+      printArea.style.overflow = "visible";
+      printArea.style.zIndex = "-1";
+
+      const sheet = printArea.querySelector(".print-sheet") || printArea;
+      const target = measurePrintCssMillimeters(196, 283);
+      const contentWidth = Math.max(sheet.scrollWidth || 1, sheet.getBoundingClientRect().width || 1);
+      const contentHeight = Math.max(sheet.scrollHeight || 1, sheet.getBoundingClientRect().height || 1);
+      const scale = Math.max(0.18, Math.min(1, target.width / contentWidth, target.height / contentHeight) - 0.01);
+
+      if (previousStyle === null) {
+        printArea.removeAttribute("style");
+      } else {
+        printArea.setAttribute("style", previousStyle);
+      }
+
+      return scale;
     }
 
     async function shareCurrentPdf() {
@@ -11184,6 +11236,10 @@
     }
 
     function openInvoicePrintFrame(html, title) {
+      if (isIosDevice() || isSafariBrowser()) {
+        printHtmlDocument(html, title);
+        return;
+      }
       const iframe = document.createElement("iframe");
       iframe.title = title;
       iframe.style.cssText = "position:fixed;left:-10000px;top:0;width:210mm;height:297mm;border:0;opacity:0;";
@@ -11973,6 +12029,14 @@
 
     window.addEventListener("afterprint", () => {
       document.getElementById("printArea").innerHTML = "";
+      document.documentElement.style.setProperty("--app-print-scale", "1");
+    });
+
+    window.addEventListener("beforeprint", () => {
+      const printArea = document.getElementById("printArea");
+      if (printArea?.innerHTML.trim()) {
+        document.documentElement.style.setProperty("--app-print-scale", String(measureTopLevelPrintScale(printArea)));
+      }
     });
 
     applyPwaIcons();
